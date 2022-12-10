@@ -45,6 +45,34 @@ contract SafeERC721 is IERC721Receiver {
         cloneERC721Logic = address(new CloneERC721());
     }
 
+    function getNftIDsStaked(address _nftContract)
+        external
+        view
+        returns (uint256[] memory nftIDs)
+    {
+        nftIDs = new uint256[](
+            nftIDsStakedByContractAddress[_nftContract].length()
+        );
+        for (
+            uint256 i = 0;
+            i < nftIDsStakedByContractAddress[_nftContract].length();
+            i++
+        ) {
+            nftIDs[i] = nftIDsStakedByContractAddress[_nftContract].at(i);
+        }
+    }
+
+    function getNftContractsCloned()
+        external
+        view
+        returns (address[] memory nftContractsStaked)
+    {
+        nftContractsStaked = new address[](nftContracts.length());
+        for (uint256 i = 0; i < nftContracts.length(); i++) {
+            nftContractsStaked[i] = nftContracts.at(i);
+        }
+    }
+
     function stakeERC721Assets(
         IERC721Metadata _nftContract,
         uint256[] calldata _tokenIds,
