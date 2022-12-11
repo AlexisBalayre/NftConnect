@@ -13,15 +13,22 @@ contract SafeERC721 is IERC721Receiver {
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    address public immutable manager;
-    address public immutable cloneERC721Logic;
+    address public immutable admin;
+    address public immutable leaseContract;
 
-    struct StakeInfo {
+    struct LeaseData {
         bool isStaked;
+        bool isAvailableForLease;
         address owner;
-        uint256 startLocking;
-        uint256 lockDuration;
+        address lessee;
+        address cloneContract;
+        int96 leasingFlowRatePrice;
+        uint256 leasingStartTimestamp;
+        uint256 leasingDuration;
     }
+
+    /// Set of all clone ERC721 logic contracts
+    EnumerableSet.AddressSet private clonesERC721Logic;
 
     /// Set of all NFT contracts that are cloned
     EnumerableSet.AddressSet private nftContracts;
@@ -32,17 +39,46 @@ contract SafeERC721 is IERC721Receiver {
     /// Maps the address of a clone NFT contract to the address of the original NFT contract
     mapping(address => address) public cloneAddressByContractAddress;
     /// Maps the address of the original NFT Contract to the NFT ID staked to the Staking Informations
-    mapping(address => mapping(uint256 => StakeInfo))
-        public stakeInfoByContractAddress;
+    mapping(address => mapping(uint256 => LeaseData))
+        private stakeDataByContractAddress;
 
-    error IsNotManager(address caller);
+    error IsNotAdmin(address caller);
     error IsNotNftOwner(address caller);
     error WrongOperator(address operator);
     error AmountTooHigh(uint256 amount, uint256 maxAmount);
 
-    constructor() {
-        manager = msg.sender;
-        cloneERC721Logic = address(new CloneERC721());
+    constructor(
+        address _admin
+    ) {
+        admin =_admin;
+        leaseContract = msg.sender;
+        clonesERC721Logic.add(address(new CloneERC721()));
+    }
+
+    function getStakeData(
+        address _nftContract,
+        uint256 _tokenId
+    ) external view returns (LeaseData memory leaseData) {
+        leaseData = stakeDataByContractAddress[_nftContract][_tokenId];
+    }
+
+    function getCloneERC721Logic(uint256 _index)
+        external
+        view
+        returns (address cloneERC721LogicAddress)
+    {
+        cloneERC721LogicAddress = clonesERC721Logic.at(_index);
+    }
+
+    function getClonesERC721Logic()
+        external
+        view
+        returns (address[] memory cloneERC721LogicAddresses)
+    {
+        cloneERC721LogicAddresses = new address[](clonesERC721Logic.length());
+        for (uint256 i = 0; i < clonesERC721Logic.length(); i++) {
+            cloneERC721LogicAddresses[i] = clonesERC721Logic.at(i);
+        }
     }
 
     function getNftIDsStaked(address _nftContract)
@@ -73,15 +109,25 @@ contract SafeERC721 is IERC721Receiver {
         }
     }
 
+    /// @notice Locks out some NFTs and puts them on lease
+    /// @param _nftContract The address of the original NFT contract
+    /// @param _tokenIds The IDs of the NFTs 
+    /// @param _leasingDuration The duration of the lease
+    /// @param _indexERC721Logic The index of the clone ERC721 logic contract
+    /// @param _leasingFlowRatePrice The leasing flow rate price (wei/second)
     function stakeERC721Assets(
         IERC721Metadata _nftContract,
         uint256[] calldata _tokenIds,
-        uint256 _lockDuration
+        uint256 _leasingDuration,
+        uint256 _indexERC721Logic,
+        int96 _leasingFlowRatePrice
     ) external {
         /// Check if the NFT contract is already cloned
         if (!nftContracts.contains(address(_nftContract))) {
-            address cloneContract = Clones.clone(cloneERC721Logic);
-            CloneERC721(cloneContract).initialize(manager, _nftContract);
+            address cloneContract = Clones.clone(
+                clonesERC721Logic.at(_indexERC721Logic)
+            );
+            CloneERC721(cloneContract).initialize(admin, leaseContract, _nftContract);
             nftContracts.add(address(_nftContract));
             cloneAddressByContractAddress[
                 address(_nftContract)
@@ -95,18 +141,27 @@ contract SafeERC721 is IERC721Receiver {
                 address(this),
                 _tokenIds[i]
             );
+            /// Returns the address of the clone NFT contract
+            address cloneContract = cloneAddressByContractAddress[
+                address(_nftContract)
+            ];
             /// Mint the clone NFT
-            CloneERC721(cloneAddressByContractAddress[address(_nftContract)])
-                .mint(msg.sender, _tokenIds[i]);
+            CloneERC721(cloneContract)
+                .mintClone(_tokenIds[i]);
             /// Update the staking informations of the NFT
-            stakeInfoByContractAddress[address(_nftContract)][
+            stakeDataByContractAddress[address(_nftContract)][
                 _tokenIds[i]
-            ] = StakeInfo({
-                isStaked: true,
-                owner: msg.sender,
-                startLocking: block.timestamp,
-                lockDuration: _lockDuration
-            });
+            ] = LeaseData({
+                    isStaked: true,
+                    isAvailableForLease: true,
+                    owner: msg.sender,
+                    lessee: address(0),
+                    cloneContract: cloneContract,
+                    leasingStartTimestamp: 0,
+                    leasingDuration: _leasingDuration,
+                    leasingFlowRatePrice: _leasingFlowRatePrice
+                }
+            );
             /// Update the set of NFT IDs staked
             nftIDsStakedByContractAddress[address(_nftContract)].add(
                 _tokenIds[i]
@@ -114,6 +169,9 @@ contract SafeERC721 is IERC721Receiver {
         }
     }
 
+    /// @notice Unlocks some NFTs and removes them from leasing
+    /// @param _nftContract The address of the original NFT contract
+    /// @param _tokenIds The IDs of the NFTs 
     function unstakeERC721Assets(
         IERC721 _nftContract,
         uint256[] calldata _tokenIds
@@ -121,7 +179,7 @@ contract SafeERC721 is IERC721Receiver {
         for (uint256 i = 0; i < _tokenIds.length; ++i) {
             /// Check if the sender is the owner of the NFT
             if (
-                stakeInfoByContractAddress[address(_nftContract)][_tokenIds[i]]
+                stakeDataByContractAddress[address(_nftContract)][_tokenIds[i]]
                     .owner != msg.sender
             ) {
                 revert IsNotNftOwner(msg.sender);
@@ -134,16 +192,21 @@ contract SafeERC721 is IERC721Receiver {
             );
             /// Burn the clone NFT
             CloneERC721(cloneAddressByContractAddress[address(_nftContract)])
-                .burn(_tokenIds[i]);
+                .burnClone(_tokenIds[i]);
             /// Update the staking informations of the NFT
-            stakeInfoByContractAddress[address(_nftContract)][
+            stakeDataByContractAddress[address(_nftContract)][
                 _tokenIds[i]
-            ] = StakeInfo({
-                isStaked: false,
-                owner: address(0),
-                startLocking: 0,
-                lockDuration: 0
-            });
+            ] = LeaseData({
+                    isStaked: false,
+                    isAvailableForLease: false,
+                    owner: address(0),
+                    lessee: address(0),
+                    cloneContract: address(0),
+                    leasingStartTimestamp: 0,
+                    leasingDuration: 0,
+                    leasingFlowRatePrice: 0 
+                }
+            );
             /// Update the set of NFT IDs staked
             nftIDsStakedByContractAddress[address(_nftContract)].remove(
                 _tokenIds[i]

@@ -7,7 +7,7 @@ import "./Mock/NftERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 
-contract CloneERC721Test is Test, IERC721Receiver {
+/* contract CloneERC721Test is Test, IERC721Receiver {
     NftERC721 nftContract;
     CloneERC721 public clonedNftContract;
 
@@ -35,3 +35,4 @@ contract CloneERC721Test is Test, IERC721Receiver {
         return this.onERC721Received.selector;
     }
 }
+ */
