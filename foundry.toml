@@ -7,7 +7,7 @@ remappings = [
     "forge-std/=lib/forge-std/src/",
     "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "@superfluid-finance/ethereum-contracts/contracts/=lib/ethereum-contracts/contracts/"
+    "@superfluid-finance/ethereum-contracts/contracts/=lib/protocol-monorepo/packages/ethereum-contracts/contracts/"
 ]
 gas_reports = ['*']
 
