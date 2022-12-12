@@ -10,3 +10,7 @@
 	path = lib/openzeppelin-contracts-upgradeable
 	url = https://github.com/openzeppelin/openzeppelin-contracts-upgradeable
 	branch = v4.8.0
+[submodule "lib/ethereum-contracts"]
+	path = lib/ethereum-contracts
+	url = https://github.com/superfluid-finance/ethereum-contracts
+	branch = v0.1.2
