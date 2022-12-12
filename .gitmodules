@@ -10,7 +10,3 @@
 	path = lib/openzeppelin-contracts-upgradeable
 	url = https://github.com/openzeppelin/openzeppelin-contracts-upgradeable
 	branch = v4.8.0
-[submodule "lib/protocol-monorepo"]
-	path = lib/protocol-monorepo
-	url = https://github.com/superfluid-finance/protocol-monorepo
-	branch = dev
