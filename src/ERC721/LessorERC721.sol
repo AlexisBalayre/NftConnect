@@ -38,6 +38,7 @@ contract LessorERC721 is IERC721Receiver {
     event CloseStream(address receiver);
 
     constructor(
+        ISuperfluid _host,
         address _admin,
         address _feesManager
     ) {
@@ -57,68 +58,95 @@ contract LessorERC721 is IERC721Receiver {
         );
     }
 
-    /// @notice Opens or Updates a reward stream
-    /// @param _receiver Address of the receiver
-    /// @param _tokenId ID of the NFT
-    /// @param _rewardIndex Index of the reward flowrate
-    /// @dev This function can only be called by the owner or the dev Wallet
-    function createUpdateStream(
+    function openStreams(
         address _receiver,
-        uint256 _tokenId,
-        uint256 _rewardIndex
+        int96 _flowRate
     ) external {
-        require(msg.sender == owner() || msg.sender == devWallet, "Access Forbidden");
-        require(
-            _receiver != address(this),
-            "Receiver must be different than sender"
-        );
 
-        // Get NFT informations
-        IBedroomNft.NftOwnership memory nftOwnership = bedroomNft
-            .getNftOwnership(_tokenId);
-
-        // Verifies that the recipient is the owner of the NFT
-        require(nftOwnership.owner == _receiver, "Wrong receiver");
-
-        // Gets flow rate
-        int96 flowrate = rewardsByCategory[nftOwnership.category][_rewardIndex];
-
-        (, int96 outFlowRate, , ) = cfa.getFlow(
-            superToken,
+        cfaV1.authorizeFlowOperatorWithFullControl(
             address(this),
+            superToken
+        );
+        
+        (, int96 outFlowRateOwner, , ) = cfa.getFlow(
+            superToken,
+            msg.sender,
             _receiver
         );
 
-        if (outFlowRate == 0) {
-            cfaV1.createFlow(_receiver, superToken, flowrate);
-        } else {
-            cfaV1.updateFlow(_receiver, superToken, flowrate);
-        }
-
-        emit OpenUpdateStream(_receiver, flowrate);
-    }
-
-    /// @notice Closes a reward stream
-    /// @param _receiver Address of the receiver
-    /// @dev This function can only be called by the owner or the dev Wallet
-    function closeStream(address _receiver) external {
-        require(msg.sender == owner() || msg.sender == devWallet, "Access Forbidden");
-        require(
-            _receiver != address(this),
-            "Receiver must be different than sender"
+        (, int96 outFlowRateFees, , ) = cfa.getFlow(
+            superToken,
+            msg.sender,
+            address(feesManager)
         );
 
-        cfaV1.deleteFlow(address(this), _receiver, superToken);
+        if (outFlowRateOwner == 0) {
+            cfaV1.createFlowByOperator(
+                msg.sender,
+                _receiver,
+                superToken,
+                _flowRate
+            );
+        } else {
+            cfaV1.updateFlowByOperator(
+                msg.sender,
+                _receiver,
+                superToken,
+                _flowRate + outFlowRateOwner
+            );
+        }
 
-        emit CloseStream(_receiver);
+        if (outFlowRateFees == 0) {
+            cfaV1.createFlowByOperator(
+                msg.sender,
+                address(feesManager),
+                superToken,
+                feesManager.getFeesRate(0)
+            );
+        } else {
+            cfaV1.updateFlowByOperator(
+                msg.sender,
+                address(feesManager),
+                superToken,
+                feesManager.getFeesRate(0) + outFlowRateFees
+            );
+        }
     }
 
-    function isAvailableForLease(
-        address _nftContract,
-        uint256 _tokenId
-    ) external view returns (bool isAvailable) {
-        isAvailable = safeContract.getStakeData(_nftContract, _tokenId).isAvailableForLease;
+    // TODO: Streams should not be always deleted is there are several NFTs rented
+    // TODO: Check if there are several NFTs rented
+    function CloseStreams(
+        address _receiver
+    ) external {
+        (, int96 outFlowRateOwner, , ) = cfa.getFlow(
+            superToken,
+            msg.sender,
+            _receiver
+        );
+
+        (, int96 outFlowRateFees, , ) = cfa.getFlow(
+            superToken,
+            msg.sender,
+            address(feesManager)
+        );
+
+        if (outFlowRateOwner != 0) {
+            cfaV1.deleteFlowByOperator(
+                msg.sender,
+                _receiver,
+                superToken
+            );
+        }
+
+        if (outFlowRateFees != 0) {
+            cfaV1.deleteFlowByOperator(
+                msg.sender,
+                address(feesManager),
+                superToken
+            );
+        }
     }
+
 
     function getLeaseData(
         address _nftContract,

@@ -33,7 +33,7 @@ contract FeesManager {
         feesFlowRateByIndex[_index] = _feesFlowRate;
     }
 
-    function getFees(
+    function getFeesRate(
         uint256 _index
     ) external view returns (int96 feesFlowRate) {
         feesFlowRate = feesFlowRateByIndex[_index];
