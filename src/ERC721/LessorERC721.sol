@@ -12,6 +12,17 @@ import "./CloneERC721.sol";
 import "./SafeERC721.sol";
 import "../FeesManager.sol";
 
+struct LeaseData {
+    bool isAvailableForLease;
+    address lessee;
+    uint256 leasingStartTimestamp;
+}
+
+struct Lessee {
+    bool isAllowed;
+    uint16 nftsAmount;
+}
+
 contract LessorERC721 is IERC721Receiver {
     /// @dev CFAv1 Library
     using CFAv1Library for CFAv1Library.InitData;
@@ -28,6 +39,11 @@ contract LessorERC721 is IERC721Receiver {
 
     /// @dev Address of the Superfluid CFA contract
     IConstantFlowAgreementV1 private cfa;
+
+    /// @dev Lease Data by NFT Original Contract Address and Token ID
+    mapping (address => mapping (uint256 => LeaseData)) private leaseDataByContractAddress;
+    /// @dev Lessee by Address
+    mapping (address => Lessee) private lessees;
 
     error IsNotLessee(address caller);
     error IsNotAvailableForLease(address nftContract, uint256 tokenId);
@@ -159,13 +175,14 @@ contract LessorERC721 is IERC721Receiver {
         uint256 leasingStartTimestamp,
         uint256 leasingDuration
     ) {
-        SafeERC721.LeaseData memory leaseData = safeContract.getStakeData(_nftContract, _tokenId);
+        SafeERC721.StakingData memory stakingData = safeContract.getStakeData(_nftContract, _tokenId);
+        LeaseData memory leaseData = leaseDataByContractAddress[_nftContract][_tokenId];
         isAvailable = leaseData.isAvailableForLease;
         lessee = leaseData.lessee;
-        cloneContract = leaseData.cloneContract;
-        leasingFlowRatePrice = leaseData.leasingFlowRatePrice;
+        cloneContract = stakingData.cloneContract;
+        leasingFlowRatePrice = stakingData.leasingFlowRatePrice;
         leasingStartTimestamp = leaseData.leasingStartTimestamp;
-        leasingDuration = leaseData.leasingDuration;
+        leasingDuration = stakingData.leasingDuration;
     }
 
     function getNftIdsAvailable(
@@ -174,7 +191,7 @@ contract LessorERC721 is IERC721Receiver {
         uint256[] memory _nftIds = safeContract.getNftIDsStaked(_nftContract);
         nftIds = new uint256[](_nftIds.length);
         for (uint256 i = 0; i < _nftIds.length; i++) {
-            if (safeContract.getStakeData(_nftContract, _nftIds[i]).isAvailableForLease) {
+            if (leaseDataByContractAddress[_nftContract][_nftIds[i]].isAvailableForLease) {
                 nftIds[i] = _nftIds[i];
             }
         }
@@ -184,10 +201,30 @@ contract LessorERC721 is IERC721Receiver {
         address _nftContract,
         uint256 _tokenId
     ) external {
-        SafeERC721.LeaseData memory leaseData = safeContract.getStakeData(_nftContract, _tokenId);
-        if (!leaseData.isAvailableForLease) {
+        SafeERC721.StakingData memory stakingData = safeContract.getStakeData(_nftContract, _tokenId);
+        if (stakingData.isStaked && leaseDataByContractAddress[_nftContract][_tokenId].isAvailableForLease) {
             revert IsNotAvailableForLease(_nftContract, _tokenId);
         }
+        leaseDataByContractAddress[_nftContract][_tokenId].isAvailableForLease = false;
+        leaseDataByContractAddress[_nftContract][_tokenId].lessee = msg.sender;
+        leaseDataByContractAddress[_nftContract][_tokenId].leasingStartTimestamp = block.timestamp;
+        CloneERC721 cloneContract = CloneERC721(stakingData.cloneContract);
+        cloneContract.safeTransferFrom(address(this), msg.sender, _tokenId);
+    }
+
+    function stopLease(
+        address _nftContract,
+        uint256 _tokenId
+    ) external {
+        SafeERC721.StakingData memory stakingData = safeContract.getStakeData(_nftContract, _tokenId);
+        if (leaseDataByContractAddress[_nftContract][_tokenId].lessee != msg.sender) {
+            revert IsNotLessee(msg.sender);
+        }
+        leaseDataByContractAddress[_nftContract][_tokenId].isAvailableForLease = true;
+        leaseDataByContractAddress[_nftContract][_tokenId].lessee = address(0);
+        leaseDataByContractAddress[_nftContract][_tokenId].leasingStartTimestamp = 0;
+        CloneERC721 cloneContract = CloneERC721(stakingData.cloneContract);
+        cloneContract.safeTransferFrom(msg.sender, address(this), _tokenId);
     }
 
     function onERC721Received(

@@ -16,17 +16,6 @@ contract SafeERC721 is IERC721Receiver {
     address public immutable admin;
     address public immutable leaseContract;
 
-    struct LeaseData {
-        bool isStaked;
-        bool isAvailableForLease;
-        address owner;
-        address lessee;
-        address cloneContract;
-        int96 leasingFlowRatePrice;
-        uint256 leasingStartTimestamp;
-        uint256 leasingDuration;
-    }
-
     /// Set of all clone ERC721 logic contracts
     EnumerableSet.AddressSet private clonesERC721Logic;
 
@@ -39,7 +28,14 @@ contract SafeERC721 is IERC721Receiver {
     /// Maps the address of a clone NFT contract to the address of the original NFT contract
     mapping(address => address) public cloneAddressByContractAddress;
     /// Maps the address of the original NFT Contract to the NFT ID staked to the Staking Informations
-    mapping(address => mapping(uint256 => LeaseData))
+    struct StakingData {
+        bool isStaked;
+        address owner;
+        address cloneContract;
+        int96 leasingFlowRatePrice;
+        uint256 leasingDuration;
+    }
+    mapping(address => mapping(uint256 => StakingData))
         private stakeDataByContractAddress;
 
     error IsNotAdmin(address caller);
@@ -58,7 +54,7 @@ contract SafeERC721 is IERC721Receiver {
     function getStakeData(
         address _nftContract,
         uint256 _tokenId
-    ) external view returns (LeaseData memory leaseData) {
+    ) external view returns (StakingData memory leaseData) {
         leaseData = stakeDataByContractAddress[_nftContract][_tokenId];
     }
 
@@ -151,13 +147,11 @@ contract SafeERC721 is IERC721Receiver {
             /// Update the staking informations of the NFT
             stakeDataByContractAddress[address(_nftContract)][
                 _tokenIds[i]
-            ] = LeaseData({
+            ] = StakingData(
+                {
                     isStaked: true,
-                    isAvailableForLease: true,
                     owner: msg.sender,
-                    lessee: address(0),
                     cloneContract: cloneContract,
-                    leasingStartTimestamp: 0,
                     leasingDuration: _leasingDuration,
                     leasingFlowRatePrice: _leasingFlowRatePrice
                 }
@@ -196,13 +190,11 @@ contract SafeERC721 is IERC721Receiver {
             /// Update the staking informations of the NFT
             stakeDataByContractAddress[address(_nftContract)][
                 _tokenIds[i]
-            ] = LeaseData({
+            ] = StakingData(
+                {
                     isStaked: false,
-                    isAvailableForLease: false,
                     owner: address(0),
-                    lessee: address(0),
                     cloneContract: address(0),
-                    leasingStartTimestamp: 0,
                     leasingDuration: 0,
                     leasingFlowRatePrice: 0 
                 }
