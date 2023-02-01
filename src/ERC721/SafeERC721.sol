@@ -25,7 +25,7 @@ contract SafeERC721 is IERC721Receiver {
     /// Maps the IDs of the NFTs staked to the address of the original NFT contract
     mapping(address => EnumerableSet.UintSet)
         private nftIDsStakedByContractAddress;
-    /// Maps the address of a clone NFT contract to the address of the original NFT contract
+    /// Maps the address of a cloned nft contract to the address of the original NFT contract
     mapping(address => address) public cloneAddressByContractAddress;
     /// Maps the address of the original NFT Contract to the NFT ID staked to the Staking Informations
     struct StakingData {
@@ -64,8 +64,8 @@ contract SafeERC721 is IERC721Receiver {
         leaseData = stakeDataByContractAddress[_nftContract][_tokenId];
     }
 
-    /// @notice Returns the address of the clone NFT contract
-    /// @param _index Index of the clone NFT contract in the set of all clone NFT contracts
+    /// @notice Returns the address of the cloned nft contract
+    /// @param _index Index of the cloned nft contract in the set of all cloned nft contracts
     function getCloneERC721Logic(uint256 _index)
         external
         view
@@ -74,8 +74,8 @@ contract SafeERC721 is IERC721Receiver {
         cloneERC721LogicAddress = clonesERC721Logic.at(_index);
     }
 
-    /// @notice Returns the addresses of all clone NFT contracts
-    /// @return cloneERC721LogicAddresses Array of addresses of all clone NFT contracts
+    /// @notice Returns the addresses of all cloned nft contracts
+    /// @return cloneERC721LogicAddresses Array of addresses of all cloned nft contracts
     function getClonesERC721Logic()
         external
         view
@@ -147,7 +147,7 @@ contract SafeERC721 is IERC721Receiver {
                 address(_nftContract)
             ] = cloneContract;
         }
-        /// Transfer the NFTs to the SafeERC721 contract and mint the clone NFTs
+        /// Transfer the NFTs to the SafeERC721 contract and mint the cloned nfts
         for (uint256 i = 0; i < _tokenIds.length; i++) {
             /// Transfer the NFT from the owner to the SafeERC721 contract
             _nftContract.safeTransferFrom(
@@ -155,11 +155,11 @@ contract SafeERC721 is IERC721Receiver {
                 address(this),
                 _tokenIds[i]
             );
-            /// Returns the address of the clone NFT contract
+            /// Returns the address of the cloned nft contract
             address cloneContract = cloneAddressByContractAddress[
                 address(_nftContract)
             ];
-            /// Mint the clone NFT
+            /// Mint the cloned nft
             CloneERC721(cloneContract)
                 .mintClone(_tokenIds[i]);
             /// Update the staking informations of the NFT
@@ -204,7 +204,7 @@ contract SafeERC721 is IERC721Receiver {
                 msg.sender,
                 _tokenIds[i]
             );
-            /// Burn the clone NFT
+            /// Burn the cloned nft
             CloneERC721(cloneAddressByContractAddress[address(_nftContract)])
                 .burnClone(_tokenIds[i]);
             /// Update the staking informations of the NFT

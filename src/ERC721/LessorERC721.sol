@@ -45,18 +45,30 @@ contract LessorERC721 is IERC721Receiver {
 
     error IsNotLessee(address caller);
     error IsNotAvailableForLease(address nftContract, uint256 tokenId);
-    error FlowRateNotUpdated(address receiver, int96 outFlowRate, int96 expectedOutFlowRate);
+    error FlowRateNotUpdated(address sender, address receiver, int96 outFlowRate, int96 expectedOutFlowRate);
     error IsNotAuthorized(address caller);
 
     /// @notice Open or Increase Stream Event
     event OpenIncreaseStream(
+        address sender,
         address receiver,
+        address paymentToken,
         int96 leasingFlowRatePrice,
+        int96 feesFlowRatePrice,
         int96 outFlowRateReceiver,
         int96 outFlowRateFees
     );
-    /// @notice Close Stream Event
-    event CloseStream(address receiver);
+
+    /// @notice Close or Decrease Stream Event
+    event CloseDecreaseStream(
+        address sender,
+        address receiver,
+        address paymentToken,
+        int96 leasingFlowRatePrice,
+        int96 feesFlowRatePrice,
+        int96 outFlowRateReceiver,
+        int96 outFlowRateFees
+    );
 
     constructor(ISuperfluid _host, address _admin, address _feesManager) {
         safeContract = new SafeERC721(_admin);
@@ -75,6 +87,9 @@ contract LessorERC721 is IERC721Receiver {
         );
     }
 
+    /// @notice Returns the IDs of the nfts available for lease
+    /// @param _nftContract The address of the original nft contract
+    /// @return nftIds The IDs of the nfts available for lease
     function getNftIdsAvailable(
         address _nftContract
     ) external view returns (uint256[] memory nftIds) {
@@ -92,6 +107,9 @@ contract LessorERC721 is IERC721Receiver {
         }
     }
 
+    /// @notice Returns the data of a lease
+    /// @param _nftContract The address of the original nft contract
+    /// @param _tokenId The ID of the original nft
     function getLeaseData(
         address _nftContract,
         uint256 _tokenId
@@ -126,14 +144,20 @@ contract LessorERC721 is IERC721Receiver {
         leasingPaymentToken = stakingData.leasingPaymentToken;
     }
 
+    /// @notice Starts a lease
+    /// @param _nftContract The address of the original nft contract
+    /// @param _tokenId The ID of the original nft
     function startLease(address _nftContract, uint256 _tokenId) external {
+        // Verifies that the caller is allowed to lease
         if (!lessees[msg.sender].isAllowed) {
             revert IsNotLessee(msg.sender);
         }
+        // Gets the staking data
         SafeERC721.StakingData memory stakingData = safeContract.getStakeData(
             _nftContract,
             _tokenId
         );
+        // Verifies that the nft is available for lease
         if (
             !stakingData.isStaked ||
             !leaseDataByContractAddress[_nftContract][_tokenId]
@@ -141,38 +165,44 @@ contract LessorERC721 is IERC721Receiver {
         ) {
             revert IsNotAvailableForLease(_nftContract, _tokenId);
         }
+        // Updates the lease data
         leaseDataByContractAddress[_nftContract][_tokenId]
             .isAvailableForLease = false;
         leaseDataByContractAddress[_nftContract][_tokenId].lessee = msg.sender;
         leaseDataByContractAddress[_nftContract][_tokenId]
             .leasingStartTimestamp = block.timestamp;
+        // Opens the streams
         openStreams(stakingData.owner, ISuperToken(stakingData.leasingPaymentToken), stakingData.leasingFlowRatePrice);
+        // Transfers the cloned nft to the lessee
         CloneERC721 cloneContract = CloneERC721(stakingData.cloneContract);
         cloneContract.safeTransferFrom(address(this), msg.sender, _tokenId);
     }
 
+    /// @notice Stops a lease
     function stopLease(address _nftContract, uint256 _tokenId) external {
-        if (!lessees[msg.sender].isAllowed) {
-            revert IsNotLessee(msg.sender);
-        }
+        // Gets the staking data
         SafeERC721.StakingData memory stakingData = safeContract.getStakeData(
             _nftContract,
             _tokenId
         );
+        // Verifies that the caller is the lessee of the nft
         if (
             leaseDataByContractAddress[_nftContract][_tokenId].lessee !=
             msg.sender
         ) {
             revert IsNotLessee(msg.sender);
-        }
+        }        
+        // Updates the lease data
         leaseDataByContractAddress[_nftContract][_tokenId]
             .isAvailableForLease = true;
         leaseDataByContractAddress[_nftContract][_tokenId].lessee = address(0);
         leaseDataByContractAddress[_nftContract][_tokenId]
             .leasingStartTimestamp = 0;
-        closeStreams(stakingData.owner, ISuperToken(stakingData.leasingPaymentToken), stakingData.leasingFlowRatePrice);
+        // Transfers the cloned nft to the lease contract
         CloneERC721 cloneContract = CloneERC721(stakingData.cloneContract);
         cloneContract.safeTransferFrom(msg.sender, address(this), _tokenId);
+        // Closes the streams
+        closeStreams(stakingData.owner, ISuperToken(stakingData.leasingPaymentToken), stakingData.leasingFlowRatePrice);
     }
 
     /// @dev Opens or increases streams
@@ -234,7 +264,7 @@ contract LessorERC721 is IERC721Receiver {
             _receiver
         );
         if (newOutFlowRateOwner != _flowRate + outFlowRateOwner) {
-            revert FlowRateNotUpdated(_receiver, newOutFlowRateOwner, _flowRate + outFlowRateOwner);
+            revert FlowRateNotUpdated(msg.sender, _receiver, newOutFlowRateOwner, _flowRate + outFlowRateOwner);
         }
         // Gets the new current flow rate from the lessee to the NFT owner
         (, int96 newOutFlowRateFees, , ) = cfa.getFlow(
@@ -243,8 +273,9 @@ contract LessorERC721 is IERC721Receiver {
             address(feesManager)
         );
         if (newOutFlowRateFees != feesFlowRate + outFlowRateFees) {
-            revert FlowRateNotUpdated(address(feesManager), newOutFlowRateFees, feesFlowRate + outFlowRateFees);
+            revert FlowRateNotUpdated(msg.sender, address(feesManager), newOutFlowRateFees, feesFlowRate + outFlowRateFees);
         }
+        emit OpenIncreaseStream(msg.sender, _receiver, address(_superToken), _flowRate, feesFlowRate, newOutFlowRateOwner, newOutFlowRateFees);
     }
 
     /// @dev Closes or decreases streams
@@ -270,6 +301,8 @@ contract LessorERC721 is IERC721Receiver {
         );
         // Gets the data of the lessee
         Lessee memory lessee = lessees[msg.sender];
+        // Gets the fees flow rate 
+        int96 feesFlowRate = feesManager.getFeesRate(msg.sender);
         // If the lessee has more than one NFT leased
         if (lessee.nftNumberLeased > 1) {
             // Decreases the flow rate from the lessee to the NFT owner
@@ -284,7 +317,7 @@ contract LessorERC721 is IERC721Receiver {
                 msg.sender,
                 address(feesManager),
                 _superToken,
-                outFlowRateFees - feesManager.getFeesRate(msg.sender)
+                outFlowRateFees - feesFlowRate
             );
         } 
         // If the lessee has only one NFT leased
@@ -305,7 +338,7 @@ contract LessorERC721 is IERC721Receiver {
             _receiver
         );
         if (newOutFlowRateOwner != outFlowRateOwner - _flowRate) {
-            revert FlowRateNotUpdated(_receiver, newOutFlowRateOwner, outFlowRateOwner - _flowRate);
+            revert FlowRateNotUpdated(msg.sender, _receiver, newOutFlowRateOwner, outFlowRateOwner - _flowRate);
         }
         // Gets the new current flow rate from the lessee to the fees manager
         (, int96 newOutFlowRateFees, , ) = cfa.getFlow(
@@ -313,9 +346,10 @@ contract LessorERC721 is IERC721Receiver {
             msg.sender,
             address(feesManager)
         );
-        if (newOutFlowRateFees != outFlowRateFees - feesManager.getFeesRate(msg.sender)) {
-            revert FlowRateNotUpdated(address(feesManager), newOutFlowRateFees, outFlowRateFees - feesManager.getFeesRate(msg.sender));
+        if (newOutFlowRateFees != outFlowRateFees - feesFlowRate) {
+            revert FlowRateNotUpdated(msg.sender, address(feesManager), newOutFlowRateFees, outFlowRateFees - feesFlowRate);
         }
+        emit CloseDecreaseStream(msg.sender, _receiver, address(_superToken), _flowRate, feesFlowRate, newOutFlowRateOwner, newOutFlowRateFees);
     }
 
     function onERC721Received(
