@@ -32,8 +32,10 @@ contract SafeERC721 is IERC721Receiver {
         bool isStaked;
         address owner;
         address cloneContract;
+        address leasingPaymentToken;
         int96 leasingFlowRatePrice;
-        uint256 leasingDuration;
+        uint256 leasingDurationMin;
+        uint256 leasingDurationMax;
     }
     mapping(address => mapping(uint256 => StakingData))
         private stakeDataByContractAddress;
@@ -51,6 +53,10 @@ contract SafeERC721 is IERC721Receiver {
         clonesERC721Logic.add(address(new CloneERC721()));
     }
 
+    /// @notice Returns the staking data of a NFT 
+    /// @param _nftContract Address of the NFT contract
+    /// @param _tokenId ID of the NFT
+    /// @return leaseData Staking data of the NFT
     function getStakeData(
         address _nftContract,
         uint256 _tokenId
@@ -58,6 +64,8 @@ contract SafeERC721 is IERC721Receiver {
         leaseData = stakeDataByContractAddress[_nftContract][_tokenId];
     }
 
+    /// @notice Returns the address of the clone NFT contract
+    /// @param _index Index of the clone NFT contract in the set of all clone NFT contracts
     function getCloneERC721Logic(uint256 _index)
         external
         view
@@ -66,6 +74,8 @@ contract SafeERC721 is IERC721Receiver {
         cloneERC721LogicAddress = clonesERC721Logic.at(_index);
     }
 
+    /// @notice Returns the addresses of all clone NFT contracts
+    /// @return cloneERC721LogicAddresses Array of addresses of all clone NFT contracts
     function getClonesERC721Logic()
         external
         view
@@ -77,6 +87,9 @@ contract SafeERC721 is IERC721Receiver {
         }
     }
 
+    /// @notice Returns the IDs of staked NFTs  
+    /// @param _nftContract Address of the NFT contract
+    /// @return nftIDs Array of IDs of staked NFTs
     function getNftIDsStaked(address _nftContract)
         external
         view
@@ -94,6 +107,8 @@ contract SafeERC721 is IERC721Receiver {
         }
     }
 
+    /// @notice Returns the addresses of all NFT contracts that are cloned
+    /// @return nftContractsStaked Array of addresses of all NFT contracts that are cloned
     function getNftContractsCloned()
         external
         view
@@ -108,15 +123,18 @@ contract SafeERC721 is IERC721Receiver {
     /// @notice Locks out some NFTs and puts them on lease
     /// @param _nftContract The address of the original NFT contract
     /// @param _tokenIds The IDs of the NFTs 
-    /// @param _leasingDuration The duration of the lease
+    /// @param _leasingDurationMin The minimum leasing duration (seconds)
+    /// @param _leasingDurationMax The maximum leasing duration (seconds)
     /// @param _indexERC721Logic The index of the clone ERC721 logic contract
     /// @param _leasingFlowRatePrice The leasing flow rate price (wei/second)
     function stakeERC721Assets(
         IERC721Metadata _nftContract,
         uint256[] calldata _tokenIds,
-        uint256 _leasingDuration,
+        uint256 _leasingDurationMin,
+        uint256 _leasingDurationMax,
         uint256 _indexERC721Logic,
-        int96 _leasingFlowRatePrice
+        int96 _leasingFlowRatePrice,
+        address _leasingPaymentToken
     ) external {
         /// Check if the NFT contract is already cloned
         if (!nftContracts.contains(address(_nftContract))) {
@@ -152,7 +170,9 @@ contract SafeERC721 is IERC721Receiver {
                     isStaked: true,
                     owner: msg.sender,
                     cloneContract: cloneContract,
-                    leasingDuration: _leasingDuration,
+                    leasingPaymentToken: _leasingPaymentToken,
+                    leasingDurationMin: _leasingDurationMin,
+                    leasingDurationMax: _leasingDurationMax,
                     leasingFlowRatePrice: _leasingFlowRatePrice
                 }
             );
@@ -195,7 +215,9 @@ contract SafeERC721 is IERC721Receiver {
                     isStaked: false,
                     owner: address(0),
                     cloneContract: address(0),
-                    leasingDuration: 0,
+                    leasingPaymentToken: address(0),
+                    leasingDurationMin: 0,
+                    leasingDurationMax: 0,
                     leasingFlowRatePrice: 0 
                 }
             );

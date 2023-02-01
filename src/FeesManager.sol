@@ -9,7 +9,7 @@ contract FeesManager {
     /// @notice Address of the super token address
     ISuperToken public paymentToken;
 
-    mapping (uint256 => int96) private feesFlowRateByIndex;
+    mapping (address => int96) private feesFlowRateByAddress;
 
     error IsNotAdmin(address caller);
 
@@ -27,16 +27,16 @@ contract FeesManager {
     }
 
     function setFees(
-        uint256 _index,
+        address _lessee,
         int96 _feesFlowRate
     ) external onlyAdmin {
-        feesFlowRateByIndex[_index] = _feesFlowRate;
+        feesFlowRateByAddress[_lessee] = _feesFlowRate;
     }
 
     function getFeesRate(
-        uint256 _index
+        address _lessee
     ) external view returns (int96 feesFlowRate) {
-        feesFlowRate = feesFlowRateByIndex[_index];
+        feesFlowRate = feesFlowRateByAddress[_lessee];
     }
 
     /// @notice Downgrades SuperToken to ERC20

@@ -10,8 +10,7 @@ contract CloneERC721 is ERC721Upgradeable {
     address public leaseContract;
     IERC721Metadata public nftContract;
 
-    error IsNotAdmin(address caller);
-    error WrongReceiver(address receiver);
+    error UnauthorizedAccess(address caller);
 
     function initialize(
 		address _admin, 
@@ -37,37 +36,25 @@ contract CloneERC721 is ERC721Upgradeable {
         _uri = nftContract.tokenURI(tokenId);
     }
 
-    function mintClone(uint256 tokenId) external onlyAdmin {
+    function mintClone(uint256 tokenId) external virtual {
+        if (msg.sender != safeContract) revert UnauthorizedAccess(msg.sender);
         _safeMint(leaseContract, tokenId);
     }
 
-    function burnClone(uint256 tokenId) external onlyAdmin {
+    function burnClone(uint256 tokenId) external virtual {
+        if (msg.sender != safeContract) revert UnauthorizedAccess(msg.sender);
         _burn(tokenId);
     }
 
-    function sendClone(address to, uint256 tokenId) external onlyAdmin {
+    function sendClone(address to, uint256 tokenId) external virtual {
+        if (msg.sender != safeContract) revert UnauthorizedAccess(msg.sender);
         _transfer(leaseContract, to, tokenId);
     }
 
-    function recoverClone(address from, uint256 tokenId) external onlyAdmin {
+    function recoverClone(uint256 tokenId) external virtual {
+        if (msg.sender != admin && msg.sender != safeContract) revert UnauthorizedAccess(msg.sender);
+        address from = _ownerOf(tokenId);
         _transfer(from, leaseContract, tokenId);
-    }
-
-    function _beforeTokenTransfer(
-        address _from,
-        address _to,
-        uint256 _tokenId, 
-        uint256 _batchSize
-    ) internal override (ERC721Upgradeable) {
-        if (_from != leaseContract && _to != leaseContract) {
-            revert WrongReceiver(_to);
-        }
-        super._beforeTokenTransfer(_from, _to, _tokenId, _batchSize);
-    }
-
-    modifier onlyAdmin {
-        if (msg.sender != admin && msg.sender != safeContract) revert IsNotAdmin(msg.sender);
-        _;
     }
 }
     
